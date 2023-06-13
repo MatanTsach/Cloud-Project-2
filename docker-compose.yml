@@ -1,0 +1,46 @@
+version: '1'
+services:
+  meals:
+    build:
+      context: ./meals-service
+    restart: on-failure
+    ports:
+      - '8000:8000'
+    depends_on:
+      - mongo
+    volumes:
+      - meals-data:/app/data
+
+  diet:
+    build:
+      context: ./diet-service
+    restart: on-failure
+    ports:
+      - '8080:8080'
+    depends_on:
+      - meals-dishes
+    volumes:
+      - diets-data:/app/data
+
+  mongo:
+    image: mongo
+    restart: on-failure
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+      
+  nginx:
+  image: nginx
+  restart: on-failure
+  ports:
+    - '80:80'
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+  depends_on:
+    - meals
+
+volumes:
+  meals-data:
+  diets-data:
+  mongo-data:
