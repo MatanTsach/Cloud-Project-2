@@ -5,9 +5,8 @@ from flask import request
 
 class MealsId(Resource):
 
-    def __init__(self, meals_collection, dishes_collection):
-        self.meals_collection = meals_collection
-        self.dishes_collection = dishes_collection
+    def __init__(self, db):
+        self.db = db
     
     def get(self, id):
         meal = self.meals_collection.get_meal(id)
@@ -26,27 +25,42 @@ class MealsId(Resource):
         return deleted_id
     
     def put(self, id):
-        parser = reqparse.RequestParser()
-
-        if "application/json" not in request.headers.get("Content-Type"):
+        required_args = {
+            'name': str,
+            'appetizer': int,
+            'main': int,
+            'dessert': int
+        }
+        content_type = request.headers.get("Content-Type")
+        if not content_type or "application/json" not in content_type:
             return 0, 415
+        
+        request_args = request.get_json()
 
-        parser.add_argument("name", type=str, location="json")
-        parser.add_argument("appetizer", type=int, location="json")
-        parser.add_argument("main", type=int, location="json")
-        parser.add_argument("dessert", type=int, location="json")
-
-        args = parser.parse_args()
-        if not all(args.values()):
+        if all(arg in request_args for arg in required_args) and len(request_args) == len(required_args):
+            for arg, arg_type in required_args.items():
+                if not isinstance(request_args[arg], arg_type):
+                    return -1, 422
+        else:
             return -1, 422
         
-        dishes_data = self.dishes_collection.dishes
-        for key, value in args.items():
-            if key != 'name' and value not in dishes_data.keys():
-                    return -6, 422   
-        # Assuming the id of the meal already exists, according to the lecture.
-        self.meals_collection.update_meal(id, dict(args),dishes_data)
+        for key, value in request_args.items():
+            if key != 'name' and not self.db['dishes'].find_one({'ID': value}):
+                return -6, 422
+        
+        
         return id, 200
+    
+    def update_meal_data(self, meal_data: dict, dishes_data: dict) -> None:
+        dish_ids = [meal_data[key] for key in meal_data.keys() if key in self.courses] # to make sure i only take the dish ids
+        self._reset_nutrients(meal_data)
+        for dish_id in dish_ids:
+            for nutrient in self.nutrients:
+                meal_data[nutrient] = meal_data.get(nutrient, 0) + dishes_data[dish_id][nutrient]
+
+    def reset_meal(self, meal: dict) -> None:
+        for nutrient in self.nutrients:
+            meal[nutrient] = None
 
 
         

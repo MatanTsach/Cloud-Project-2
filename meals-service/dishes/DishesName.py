@@ -1,10 +1,10 @@
 # Implements /dishes/{name} endpoint
 from flask_restful import Resource
 
-class DishName(Resource):
+class DishesName(Resource):
 
-    def __init__(self, dishes_collection):
-        self.dishes_collection = dishes_collection
+    def __init__(self, db):
+        self.db = db
     
     def get(self, name):
         dish_id = self.dishes_collection.get_dish_id(name)

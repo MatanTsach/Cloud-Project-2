@@ -1,43 +1,54 @@
 # Implements /meals endpoint
 from flask_restful import Resource, reqparse
 from flask import request
-
+import json
 
 class Meals(Resource):
 
-    def __init__(self, meals_collection, dishes_collection):
-        self.meals_collection = meals_collection
-        self.dishes_collection = dishes_collection
+    def __init__(self, db):
+        self.db = db
+        self.meals = db['meals']
+        
+        if self.meals.find_one({'_id': 0}) is None:
+            self.meals.insert_one({"_id": 0, 'key': 0})
 
     def get(self):
-        return self.meals_collection.meals
+        return [json.dumps(document, default=str) for document in self.meals.find()]
 
     def post(self):
-        parser = reqparse.RequestParser()
+        required_args = {
+            'name': str,
+            'appetizer': int,
+            'main': int,
+            'dessert': int
+        }
         content_type = request.headers.get("Content-Type")
         if not content_type or "application/json" not in content_type:
             return 0, 415
         
-        parser.add_argument("name", type=str, location="json")
-        parser.add_argument("appetizer", type=int, location="json")
-        parser.add_argument("main", type=int, location="json")
-        parser.add_argument("dessert", type=int, location="json")
-        args = parser.parse_args()
+        request_args = request.get_json()
 
-        if not all(args.values()):
+        if all(arg in request_args for arg in required_args) and len(request_args) == len(required_args):
+            for arg, arg_type in required_args.items():
+                if not isinstance(request_args[arg], arg_type):
+                    return -1, 422
+        else:
             return -1, 422
         
-        if self.meals_collection.meal_exists(args['name']):
+        if self.meals.find_one({'name': request_args['name']}):
             return -2, 422
         
-        dishes_data = self.dishes_collection.dishes
-        for key, value in args.items():
-            if key != 'name' and value not in dishes_data.keys():
-                    return -6, 422
+        for key, value in request_args.items():
+            if key != 'name' and not self.db['dishes'].find_one({'ID': value}):
+                return -6, 422
         
-        meal_data = dict(args)
-        meal_id = self.meals_collection.add_meal(meal_data, dishes_data)
-        return meal_id, 201
+        meal_data = dict(request_args)
+        document = {'_id': 0}
+        new_id = self.meals.find_one(document)['key'] + 1
+        meal_data['ID'] = new_id
+        self.meals.update_one(document, {'$set': {'key': new_id}})
+        self.meals.insert_one(meal_data)
+        return new_id, 201
     
     def delete(self):
         response_message = "This method is not allowed for the requested URL"

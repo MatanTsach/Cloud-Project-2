@@ -1,30 +1,47 @@
 # Implements /dishes endpoint
 from flask_restful import Resource, reqparse
 from flask import request
+from flask import jsonify
+import json
 import requests
 
 
 class Dishes(Resource):
 
-    def __init__(self, dishes_collection):
-        self.dishes_collection = dishes_collection
+    def __init__(self, db):
+        self.db = db
+        self.dishes = db['dishes']
+        
+        if self.dishes.find_one({'_id': 0}) is None:
+            self.dishes.insert_one({"_id": 0, 'key': 0})
 
     def get(self):
-        return self.dishes_collection.dishes
+        json_objects = [json.loads(json.dumps(document, default=str)) for document in self.dishes.find({"_id": {"$gt": 0}})]
+
+        return jsonify(json_objects)
 
     def post(self):
+        required_args = {
+            'name': str
+        }
+
         parser = reqparse.RequestParser()
         content_type = request.headers.get("Content-Type")
+
         if not content_type or "application/json" not in content_type:
             return 0, 415
 
-        parser.add_argument("name", type=str, location="json")
-        args = parser.parse_args() 
-        if not all(args.values()):
+        request_args = request.get_json()
+
+        if all(arg in request_args for arg in required_args) and len(request_args) == len(required_args):
+            for arg, arg_type in required_args.items():
+                if not isinstance(request_args[arg], arg_type):
+                    return -1, 422
+        else:
             return -1, 422
 
-        dish_name = args['name']
-        if self.dishes_collection.dish_exists(dish_name):
+        dish_name = request_args['name']
+        if self.dishes.find_one({'name': dish_name}):
             return -2, 422
         
         dish_data = self.fetch_dish_data(dish_name)
@@ -34,7 +51,13 @@ class Dishes(Resource):
         if len(dish_data.keys()) == 1:
             return -3, 422
         
-        new_id = self.dishes_collection.add_dish(dish_data)
+        document = {'_id': 0}
+        new_id = self.dishes.find_one(document)['key'] + 1
+        dish_data['ID'] = new_id
+        self.dishes.update_one(document, {'$set': {'key': new_id}})
+        print(dish_data)
+        print('TEST')
+        self.dishes.insert_one(dish_data)
         return new_id, 201
         
 
@@ -59,4 +82,3 @@ class Dishes(Resource):
     def delete(self):
         response_message = "This method is not allowed for the requested URL"
         return response_message, 405
-        
