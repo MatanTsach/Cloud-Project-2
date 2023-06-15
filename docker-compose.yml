@@ -11,7 +11,17 @@ services:
       - type: bind
         source: ./meals-service
         target: /app
-
+  diets:
+    build: ./diets-service
+    restart: always
+    ports:
+      - '5002:8000'
+    depends_on:
+      - mongo
+    volumes:
+      - type: bind
+        source: ./diets-service
+        target: /app
   mongo:
     image: mongo
     restart: always
@@ -19,7 +29,16 @@ services:
       - '27017:27017'
     volumes:
       - mongo-data:/data/db
-
+  nginx:
+    image: nginx
+    restart: always
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - meals
+      - diets
 
 volumes:
   mongo-data:

@@ -1,7 +1,9 @@
 # Implements /meals endpoint
-from flask_restful import Resource, reqparse
-from flask import request
+from flask_restful import Resource
+from flask import request, jsonify
 import json
+import MealModules
+import requests
 
 class Meals(Resource):
 
@@ -13,7 +15,31 @@ class Meals(Resource):
             self.meals.insert_one({"_id": 0, 'key': 0})
 
     def get(self):
-        return [json.dumps(document, default=str) for document in self.meals.find()]
+        diet_name = request.args.get('diet')
+
+        if diet_name is None:
+            results = self.meals.find({"_id": {"$ne": 0}}, {"_id": 0})
+        else:
+            url = f'http://diets:8000/diets/{diet_name}'
+            response = requests.get(url)
+            
+            if response.status_code == 404:
+                return f"Diet {diet_name} not found", 404
+            
+            response_json = response.json()
+            print(response_json)
+            results = self.meals.find(
+            {
+                "_id": {"$ne": 0},
+                "cal": {"$lte": response_json['cal']},
+                "sodium": {"$lte": response_json['sodium']},
+                "sugar": {"$lte": response_json['sugar']}
+            },
+            {"_id": 0})
+
+        json_objects = [json.loads(json.dumps(result, default=str)) for result in results]
+
+        return jsonify(json_objects)
 
     def post(self):
         required_args = {
@@ -43,14 +69,20 @@ class Meals(Resource):
                 return -6, 422
         
         meal_data = dict(request_args)
-        document = {'_id': 0}
-        new_id = self.meals.find_one(document)['key'] + 1
-        meal_data['ID'] = new_id
-        self.meals.update_one(document, {'$set': {'key': new_id}})
+        meal_id = self.update_key()
+        meal_data['ID'] = meal_id
+        MealModules.add_meal_data(meal_data, self.db['dishes'])
         self.meals.insert_one(meal_data)
-        return new_id, 201
+
+        return meal_id, 201
     
     def delete(self):
         response_message = "This method is not allowed for the requested URL"
         return response_message, 405
+    
+    def update_key(self):
+        document = {'_id': 0}
+        new_id = self.meals.find_one(document)['key'] + 1
+        self.meals.update_one(document, {'$set': {'key': new_id}})
+        return new_id
         

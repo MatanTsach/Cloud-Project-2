@@ -1,28 +1,28 @@
 # Implements /meals/{ID} endpoint
 from flask_restful import Resource
-from flask_restful import reqparse
-from flask import request
+from flask import request, jsonify
+import json
+import MealModules
 
 class MealsId(Resource):
 
     def __init__(self, db):
         self.db = db
+        self.meals = self.db['meals']
     
     def get(self, id):
-        meal = self.meals_collection.get_meal(id)
-
+        meal = self.meals.find_one({'ID': id}, {"_id": 0})
         if meal is None:
             return -5, 404
         
-        return meal
+        return jsonify(json.loads(json.dumps(meal, default=str)))
     
     def delete(self, id):
-        deleted_id = self.meals_collection.delete_meal(id)
-
-        if deleted_id == -1:
+        deleted_result = self.meals.delete_one({'ID': id})
+        if deleted_result.deleted_count == 0:
             return -5, 404
         
-        return deleted_id
+        return id
     
     def put(self, id):
         required_args = {
@@ -47,20 +47,12 @@ class MealsId(Resource):
         for key, value in request_args.items():
             if key != 'name' and not self.db['dishes'].find_one({'ID': value}):
                 return -6, 422
-        
-        
-        return id, 200
-    
-    def update_meal_data(self, meal_data: dict, dishes_data: dict) -> None:
-        dish_ids = [meal_data[key] for key in meal_data.keys() if key in self.courses] # to make sure i only take the dish ids
-        self._reset_nutrients(meal_data)
-        for dish_id in dish_ids:
-            for nutrient in self.nutrients:
-                meal_data[nutrient] = meal_data.get(nutrient, 0) + dishes_data[dish_id][nutrient]
+            
+        meal_data = dict(request_args)
+        MealModules.add_meal_data(meal_data, self.db['dishes'])
+        self.meals.update_one({'ID': id}, {'$set': meal_data})
 
-    def reset_meal(self, meal: dict) -> None:
-        for nutrient in self.nutrients:
-            meal[nutrient] = None
+        return id, 200
 
 
         

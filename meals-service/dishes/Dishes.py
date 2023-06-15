@@ -16,16 +16,14 @@ class Dishes(Resource):
             self.dishes.insert_one({"_id": 0, 'key': 0})
 
     def get(self):
-        json_objects = [json.loads(json.dumps(document, default=str)) for document in self.dishes.find({"_id": {"$gt": 0}})]
-
+        results = self.dishes.find({"_id": {"$ne": 0}}, {"_id": 0})
+        json_objects = [json.loads(json.dumps(result, default=str)) for result in results]
         return jsonify(json_objects)
 
     def post(self):
         required_args = {
             'name': str
         }
-
-        parser = reqparse.RequestParser()
         content_type = request.headers.get("Content-Type")
 
         if not content_type or "application/json" not in content_type:
@@ -55,8 +53,6 @@ class Dishes(Resource):
         new_id = self.dishes.find_one(document)['key'] + 1
         dish_data['ID'] = new_id
         self.dishes.update_one(document, {'$set': {'key': new_id}})
-        print(dish_data)
-        print('TEST')
         self.dishes.insert_one(dish_data)
         return new_id, 201
         

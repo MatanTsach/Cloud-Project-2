@@ -1,52 +1,44 @@
-from flask import Flask
-from flask_restful import Api, Resource, reqparse
-
+from flask import jsonify, request
+from flask_restful import Resource
+import json
 class Diets(Resource):
     def __init__(self, db):
-        self.diets_collection = db['diets']
+        self.diets = db['diets']
+
+        if self.diets.find_one({'_id': 0}) is None:
+            self.diets.insert_one({"_id": 0, 'key': 0})
 
     def get(self):
-        return diets_collection
-
+        results = self.diets.find({"_id": {"$ne": 0}}, {"_id": 0})
+        json_objects = [json.loads(json.dumps(result, default=str)) for result in results]
+        return jsonify(json_objects)
+    
     def post(self):
-        new_diet = request.get_json()
-        if not new_diet.get('name') or not new_diet.get('cal') or not new_diet.get('sodium') or not new_diet.get('sugar'):
-            return {"message": "Missing required fields. Please provide 'name', 'cal', 'sodium', and 'sugar'."}, 400
+        required_args = {
+            'name': str,
+            'cal': (float, int),
+            'sodium': (float, int),
+            'sugar': (float, int)
+        }
 
-        required_fields = ['name', 'cal', 'sodium', 'sugar']
-        if len(new_diet) != len(required_fields):
-            return {"message": "Invalid number of fields. Please provide all the required fields."}, 400
+        content_type = request.headers.get("Content-Type")
+        if not content_type or "application/json" not in content_type:
+            return "POST expects content type to be application/json", 415
+        
+        request_args = request.get_json()
+        if all(arg in request_args for arg in required_args) and len(request_args) == len(required_args):
+            for arg, arg_type in required_args.items():
+                if not isinstance(request_args[arg], arg_type):
+                    return "Incorrect POST format", 422
+        else:
+            return "Incorrect POST format", 422
+        
+        diet_data = dict(request_args)
+        if self.diets.find_one({'name': request_args['name']}):
+            return f"Diet with name {diet_data['name']} already exists", 422
 
-        diet_name = args['name']
-        existing_diet = diets_collection.find_one({'name': diet_name})
-        if existing_diet:
-            return {"message": f"Diet with name '{diet_name}' already exists."}, 409
+        self.diets.insert_one(diet_data)
 
-        parser = reqparse.RequestParser()
-        parser.add_argument('name', type=str, required=True)
-        parser.add_argument('cal', type=int, required=True)
-        parser.add_argument('sodium', type=int, required=True)
-        parser.add_argument('sugar', type=int, required=True)
-        args = parser.parse_args()
-
-        errors = []
-
-        if not isinstance(args['name'], str):
-            errors.append("'name' should be a string.")
-
-        if not isinstance(args['cal'], int):
-            errors.append("'cal' should be an integer.")
-
-        if not isinstance(args['sodium'], int):
-            errors.append("'sodium' should be an integer.")
-
-        if not isinstance(args['sugar'], int):
-            errors.append("'sugar' should be an integer.")
-
-        if errors:
-            return {"message": "Invalid request payload.", "errors": errors}, 400    
-
-        diets_collection.insert_one(new_diet)
-        return {"message": "Diet added successfully"}, 201    
+        return f"Diet {diet_data['name']} was created successfully", 201
 
 
